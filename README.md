@@ -1,8 +1,4 @@
-# Next.js SaaS Starter
-
-This is a starter template for building a SaaS application using **Next.js** with support for authentication, Stripe integration for payments, and a dashboard for logged-in users.
-
-**Demo: [https://next-saas-start.vercel.app/](https://next-saas-start.vercel.app/)**
+# Start as a hub
 
 ## Features
 
@@ -27,8 +23,8 @@ This is a starter template for building a SaaS application using **Next.js** wit
 ## Getting Started
 
 ```bash
-git clone https://github.com/nextjs/saas-starter
-cd saas-starter
+git clone https://github.com/Axpz/xHub
+cd xHub
 pnpm install
 ```
 
@@ -85,12 +81,6 @@ When you're ready to deploy your SaaS application to production, follow these st
 1. Go to the Stripe Dashboard and create a new webhook for your production environment.
 2. Set the endpoint URL to your production API route (e.g., `https://yourdomain.com/api/stripe/webhook`).
 3. Select the events you want to listen for (e.g., `checkout.session.completed`, `customer.subscription.updated`).
-
-### Deploy to Vercel
-
-1. Push your code to a GitHub repository.
-2. Connect your repository to [Vercel](https://vercel.com/) and deploy it.
-3. Follow the Vercel deployment process, which will guide you through setting up your project.
 
 ### Add environment variables
 
