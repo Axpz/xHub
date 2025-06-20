@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -169,37 +170,79 @@ func (c *AgentClient) executeTask(task *proto.Task) *proto.TaskResult {
 
 	startTime := time.Now()
 
-	// 这里实现具体的任务执行逻辑
-	// 目前只是模拟执行
-	time.Sleep(2 * time.Second)
+	// 从任务参数中获取必要的 iptables 参数
+	dport := task.Parameters["dport"]                           // 外部端口
+	toDestinationIP := task.Parameters["to-destination-ip"]     // 内部目标IP
+	toDestinationPort := task.Parameters["to-destination-port"] // 内部目标端口
+	externalInterface := "eth0"                                 // 假设外部接口为 eth0，根据实际情况可能需要从参数获取或配置
 
-	dport := task.Parameters["dport"]
-	to_destination_ip := task.Parameters["to-destination-ip"]
-	to_destination_port := task.Parameters["to-destination-port"]
-
-	commands := []string{
-		fmt.Sprintf("iptables -t nat -A PREROUTING -p tcp --dport %s -j DNAT --to-destination %s:%s", dport, to_destination_ip, to_destination_port),
-		fmt.Sprintf("iptables -t nat -A PREROUTING -p udp --dport %s -j DNAT --to-destination %s:%s", dport, to_destination_ip, to_destination_port),
-		fmt.Sprintf("iptables -t nat -A POSTROUTING -d %s -p tcp --dport %s -j MASQUERADE", to_destination_ip, dport),
-		fmt.Sprintf("iptables -t nat -A POSTROUTING -d %s -p udp --dport %s -j MASQUERADE", to_destination_ip, dport),
+	// 检查关键参数是否为空
+	if dport == "" || toDestinationIP == "" || toDestinationPort == "" {
+		return &proto.TaskResult{
+			Success:         false,
+			Output:          "",
+			Error:           "Missing required iptables parameters: dport, to-destination-ip, or to-destination-port",
+			ExecutionTimeMs: time.Since(startTime).Milliseconds(),
+			Metadata: map[string]string{
+				"executed_at": time.Now().Format(time.RFC3339),
+			},
+		}
 	}
 
+	// 构建 iptables 命令列表
+	// 按照之前讨论的，这里包含：
+	// 1. DNAT 规则 (PREROUTING)
+	// 2. MASQUERADE 规则 (POSTROUTING) - 修正为不带 dport 的通用规则
+	// 3. FORWARD 规则 (filter表) - 允许转发到内部IP，并允许内部IP的返回流量
+	commands := []string{
+		// 启用 IP 转发 (如果尚未启用)
+		// "sysctl -w net.ipv4.ip_forward=1", // 运行时生效，但重启可能失效。建议也在 /etc/sysctl.conf 中配置。
+
+		// DNAT 规则
+		fmt.Sprintf("iptables -t nat -A PREROUTING -p tcp --dport %s -j DNAT --to-destination %s:%s", dport, toDestinationIP, toDestinationPort),
+		fmt.Sprintf("iptables -t nat -A PREROUTING -p udp --dport %s -j DNAT --to-destination %s:%s", dport, toDestinationIP, toDestinationPort),
+
+		// MASQUERADE 规则 (修正版，不带 --dport，并指定出站接口)
+		fmt.Sprintf("iptables -t nat -A POSTROUTING -o %s -j MASQUERADE", externalInterface),
+
+		// FORWARD 规则 (Filter 表)
+		// 允许新的/已建立的/相关连接从外部到内部目标的转发
+		fmt.Sprintf("iptables -A FORWARD -o %s -p tcp -d %s --dport %s -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT", externalInterface, toDestinationIP, toDestinationPort),
+		fmt.Sprintf("iptables -A FORWARD -o %s -p udp -d %s --dport %s -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT", externalInterface, toDestinationIP, toDestinationPort),
+		// 允许已建立的/相关连接从内部目标返回外部
+		fmt.Sprintf("iptables -A FORWARD -i %s -m state --state ESTABLISHED,RELATED -j ACCEPT", externalInterface),
+	}
+
+	var executionErrors []string
 	for _, command := range commands {
 		log.Printf("Executing command: %s", command)
-		if dport != "" && to_destination_ip != "" && to_destination_port != "" {
-			output, err := exec.Command("bash", "-c", command).CombinedOutput()
-			if err != nil {
-				log.Printf("Failed to execute command: %v", err)
-			}
+		output, err := exec.Command("bash", "-c", command).CombinedOutput()
+		if err != nil {
+			errMsg := fmt.Sprintf("Failed to execute command '%s': %v, Output: %s", command, err, string(output))
+			log.Printf(errMsg)
+			executionErrors = append(executionErrors, errMsg)
+		} else {
 			log.Printf("Command output: %s", string(output))
 		}
 	}
 
 	executionTime := time.Since(startTime).Milliseconds()
 
+	if len(executionErrors) > 0 {
+		return &proto.TaskResult{
+			Success:         false,
+			Output:          "Some iptables commands failed to execute.",
+			Error:           strings.Join(executionErrors, "\n"),
+			ExecutionTimeMs: executionTime,
+			Metadata: map[string]string{
+				"executed_at": time.Now().Format(time.RFC3339),
+			},
+		}
+	}
+
 	return &proto.TaskResult{
 		Success:         true,
-		Output:          fmt.Sprintf("Task %s executed successfully", task.TaskId),
+		Output:          fmt.Sprintf("Task %s executed successfully. iptables rules applied.", task.TaskId),
 		Error:           "",
 		ExecutionTimeMs: executionTime,
 		Metadata: map[string]string{
@@ -260,7 +303,7 @@ func getLocalIP() string {
 }
 
 func main() {
-	serverAddr := "localhost:20081"
+	serverAddr := "74.121.149.207:20081"
 	if len(os.Args) > 1 {
 		serverAddr = os.Args[1]
 	}

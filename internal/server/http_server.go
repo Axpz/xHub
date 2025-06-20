@@ -104,6 +104,8 @@ func (s *HTTPServer) installAgent(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Installing agent to %s:%d with user %s", req.Host, req.Port, req.Username)
+
 	sshConfig := &ssh.SSHConfig{
 		Host:     req.Host,
 		Port:     req.Port,
@@ -111,19 +113,43 @@ func (s *HTTPServer) installAgent(c *gin.Context) {
 		Password: req.Password,
 	}
 
-	output, err := sshConfig.InstallAgent()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to install agent: " + err.Error(),
-		})
-		return
-	}
+	// 使用goroutine和channel来处理超时
+	done := make(chan struct {
+		output string
+		err    error
+	}, 1)
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"message": output,
-	})
+	go func() {
+		output, err := sshConfig.InstallAgent()
+		done <- struct {
+			output string
+			err    error
+		}{output, err}
+	}()
+
+	// 设置超时时间
+	select {
+	case result := <-done:
+		if result.err != nil {
+			log.Printf("Agent installation failed: %v", result.err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to install agent: " + result.err.Error(),
+			})
+			return
+		}
+		log.Printf("Agent installation completed successfully")
+		c.JSON(http.StatusCreated, gin.H{
+			"success": true,
+			"message": result.output,
+		})
+	case <-time.After(300 * time.Second): // 300秒超时
+		log.Printf("Agent installation timed out")
+		c.JSON(http.StatusRequestTimeout, gin.H{
+			"success": false,
+			"message": "Agent installation timed out after 5 minutes",
+		})
+	}
 }
 
 // getAgent 获取单个Agent信息

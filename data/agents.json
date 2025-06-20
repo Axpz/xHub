@@ -10,7 +10,7 @@
     "hostname": "axpz.local",
     "ip_address": "192.168.3.29",
     "status": 1,
-    "last_seen": "2025-06-20T10:19:45.590284+08:00",
+    "last_seen": "2025-06-20T10:34:15.641076+08:00",
     "session_token": "session_1750384875589633000",
     "metrics": {
       "cpu_usage": "10%",

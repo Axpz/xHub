@@ -16,13 +16,23 @@ build: proto
 	@echo "Building server..."
 	go build -o bin/xhub-server cmd/main.go
 
+buildx: proto
+	@echo "Building server..."
+	GOOS=linux GOARCH=amd64 go build -o bin/xhub-server cmd/main.go
+
 # 构建agent客户端
 build-agent: proto
 	@echo "Building agent client..."
 	go build -o bin/xhub-agent cmd/agent/main.go
 
+buildx-agent: proto
+	@echo "Building agent client..."
+	GOOS=linux GOARCH=amd64 go build -o bin/xhub-agent cmd/agent/main.go
+
 # 构建所有
 build-all: build build-agent
+
+buildx-all: buildx buildx-agent
 
 # 运行服务器
 run: build
