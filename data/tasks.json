@@ -1,0 +1,52 @@
+{
+  "task_1750345675220073000": {
+    "id": "task_1750345675220073000",
+    "type": "bash",
+    "command": "iptables",
+    "parameters": {
+      "dport": "40080",
+      "to-destination-ip": "1.2.3.4",
+      "to-destination-port": ""
+    },
+    "timeout_seconds": 0,
+    "status": 2,
+    "assigned_to": "axpz.local-192.168.3.29",
+    "assigned_at": "2025-06-20T00:15:12.443192+08:00",
+    "created_at": "2025-06-19T23:07:55.220074+08:00",
+    "result": {
+      "success": true,
+      "output": "Task task_1750345675220073000 executed successfully",
+      "error": "",
+      "execution_time_ms": 2001,
+      "metadata": {
+        "executed_at": "2025-06-20T00:15:14+08:00"
+      },
+      "completed_at": "2025-06-20T00:15:14.445879+08:00"
+    }
+  },
+  "task_1750384831006021000": {
+    "id": "task_1750384831006021000",
+    "type": "bash",
+    "command": "iptables",
+    "parameters": {
+      "dport": "123",
+      "to-destination-ip": "1.1.1.1",
+      "to-destination-port": "11111"
+    },
+    "timeout_seconds": 0,
+    "status": 2,
+    "assigned_to": "axpz.local-192.168.3.29",
+    "assigned_at": "2025-06-20T10:01:45.598283+08:00",
+    "created_at": "2025-06-20T10:00:31.006022+08:00",
+    "result": {
+      "success": true,
+      "output": "Task task_1750384831006021000 executed successfully",
+      "error": "",
+      "execution_time_ms": 2045,
+      "metadata": {
+        "executed_at": "2025-06-20T10:01:47+08:00"
+      },
+      "completed_at": "2025-06-20T10:01:47.645753+08:00"
+    }
+  }
+}

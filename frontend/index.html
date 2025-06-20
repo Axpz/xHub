@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTables 与 Agent 监控</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Modal backdrop styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+            position: relative; /* Needed for absolute positioning of close button if added */
+        }
+        /* Message box styles (for general messages like modal submission feedback) */
+        .message-box {
+            padding: 0.75rem 1.25rem;
+            margin-top: 1rem;
+            border-radius: 0.375rem; /* rounded-md */
+            text-align: center;
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 500; /* font-medium */
+        }
+        .message-box.success {
+            background-color: #d1fae5; /* green-100 */
+            color: #065f46; /* green-800 */
+        }
+        .message-box.error {
+            background-color: #fee2e2; /* red-100 */
+            color: #991b1b; /* red-800 */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+
+    <!-- Agent 状态监控模块 -->
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-2xl mb-8">
+        <h2 class="text-2xl font-bold text-center mb-6 text-gray-800">Agent 状态监控</h2>
+        <p id="agent-loading-message" class="text-center text-gray-500 mb-4 hidden">正在加载 Agent 信息...</p>
+        <p id="agent-status-message" class="mt-4 text-center"></p>
+        <div id="agents-list" class="space-y-6">
+            <!-- Agent items will be rendered here by JavaScript -->
+        </div>
+        <p id="no-agent-message" class="text-center text-gray-600 mt-4 hidden">目前没有可用的 Agent 信息。</p>
+        <div class="mt-6 text-center">
+            <button
+                id="add-server-button"
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            >
+                添加服务器
+            </button>
+        </div>
+    </div>
+
+    <!-- IPTables 配置模块 -->
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h2 class="text-2xl font-bold text-center mb-6 text-gray-800">IPTables 配置</h2>
+        <form id="iptables-form">
+            <div class="mb-4">
+                <label for="dport" class="block text-sm font-medium text-gray-700 mb-1">目标端口 (dport)</label>
+                <input
+                    type="number"
+                    id="dport"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="例如: 80"
+                >
+            </div>
+            <div class="mb-4">
+                <label for="toDestinationIp" class="block text-sm font-medium text-gray-700 mb-1">目标IP (to-destination-ip)</label>
+                <input
+                    type="text"
+                    id="toDestinationIp"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="例如: 192.168.1.100"
+                >
+            </div>
+            <div class="mb-4">
+                <label for="toDestinationPort" class="block text-sm font-medium text-gray-700 mb-1">目标端口 (to-destination-port)</label>
+                <input
+                    type="number"
+                    id="toDestinationPort"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="例如: 8080"
+                >
+            </div>
+            <button
+                type="submit"
+                id="submit-button"
+                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+                确定
+            </button>
+        </form>
+        <p id="iptables-message" class="mt-4 text-center"></p>
+    </div>
+
+    <!-- Add Server Modal Dialog -->
+    <div id="add-server-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-xl font-bold text-center mb-6 text-gray-800">添加服务器</h3>
+            <form id="add-server-form">
+                <div class="mb-4">
+                    <label for="hostIp" class="block text-sm font-medium text-gray-700 mb-1">Host IP</label>
+                    <input
+                        type="text"
+                        id="hostIp"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        placeholder="例如: 192.168.1.1"
+                        required
+                    >
+                </div>
+                <div class="mb-4">
+                    <label for="hostPort" class="block text-sm font-medium text-gray-700 mb-1">Host Port</label>
+                    <input
+                        type="number"
+                        id="hostPort"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value="22"
+                    >
+                </div>
+                <div class="mb-4">
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                    <input
+                        type="text"
+                        id="username"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value="root"
+                        required
+                    >
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        required
+                    >
+                </div>
+                <div class="flex justify-end space-x-4">
+                    <button
+                        type="button"
+                        id="cancel-add-server"
+                        class="inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        取消
+                    </button>
+                    <button
+                        type="submit"
+                        id="confirm-add-server"
+                        class="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                        确定
+                    </button>
+                </div>
+            </form>
+            <p id="add-server-message" class="message-box hidden"></p>
+        </div>
+    </div>
+
+    <script>
+        // Define a base URL for API requests
+        const BASE_URL = 'http://localhost:20080';
+
+        // Global variables for form and agent state
+        let currentDport = '';
+        let currentToDestinationIp = '';
+        let currentToDestinationPort = '';
+        let currentIPTablesMessage = '';
+        let currentIPTablesLoading = false;
+
+        let currentAgents = []; 
+        let currentAgentMessage = '';
+        let currentAgentLoading = false;
+
+        // DOM elements for IPTables and Agent Status
+        const dportInput = document.getElementById('dport');
+        const toDestinationIpInput = document.getElementById('toDestinationIp');
+        const toDestinationPortInput = document.getElementById('toDestinationPort');
+        const submitButton = document.getElementById('submit-button');
+        const iptablesMessageElement = document.getElementById('iptables-message');
+
+        const agentLoadingMessageElement = document.getElementById('agent-loading-message');
+        const agentStatusMessageElement = document.getElementById('agent-status-message');
+        const agentsListElement = document.getElementById('agents-list');
+        const noAgentMessageElement = document.getElementById('no-agent-message');
+        const addServerButton = document.getElementById('add-server-button');
+
+        // DOM elements for Add Server Modal
+        const addServerModal = document.getElementById('add-server-modal');
+        const addServerForm = document.getElementById('add-server-form');
+        const hostIpInput = document.getElementById('hostIp');
+        const hostPortInput = document.getElementById('hostPort');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const cancelAddServerButton = document.getElementById('cancel-add-server');
+        const confirmAddServerButton = document.getElementById('confirm-add-server');
+        const addServerMessageElement = document.getElementById('add-server-message');
+
+
+        // --- Helper functions to update UI ---
+
+        function updateIPTablesMessage(msg, isError = false) {
+            currentIPTablesMessage = msg;
+            iptablesMessageElement.textContent = msg;
+            iptablesMessageElement.className = `mt-4 text-center ${isError ? 'text-red-500' : 'text-green-600'}`;
+            if (!msg) { // Hide if message is empty
+                iptablesMessageElement.classList.add('hidden');
+            } else {
+                iptablesMessageElement.classList.remove('hidden');
+            }
+        }
+
+        function setIPTablesLoading(loading) {
+            currentIPTablesLoading = loading;
+            submitButton.disabled = loading;
+            submitButton.textContent = loading ? '发送中...' : '确定';
+            if (loading) {
+                submitButton.classList.add('bg-gray-400', 'cursor-not-allowed');
+                submitButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            } else {
+                submitButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                submitButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            }
+        }
+
+        function updateAgentStatusMessage(msg, isError = false) {
+            currentAgentMessage = msg;
+            agentStatusMessageElement.textContent = msg;
+            agentStatusMessageElement.className = `mt-4 text-center ${isError ? 'text-red-500' : 'text-green-600'}`;
+            if (!msg) { // Hide if message is empty
+                agentStatusMessageElement.classList.add('hidden');
+            } else {
+                agentStatusMessageElement.classList.remove('hidden');
+            }
+        }
+
+        function setAgentLoadingStatus(loading) {
+            currentAgentLoading = loading;
+            if (loading) {
+                agentLoadingMessageElement.classList.remove('hidden');
+            } else {
+                agentLoadingMessageElement.classList.add('hidden');
+            }
+        }
+
+        function renderAgents() {
+            agentsListElement.innerHTML = ''; // Clear existing agents
+            
+            if (currentAgents.length === 0) {
+                noAgentMessageElement.classList.remove('hidden');
+            } else {
+                noAgentMessageElement.classList.add('hidden');
+                currentAgents.forEach(agent => { // Iterate directly over the array
+                    const agentDiv = document.createElement('div');
+                    agentDiv.className = 'border border-gray-200 rounded-md p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between';
+                    agentDiv.innerHTML = `
+                        <div class="flex items-center mb-2 sm:mb-0">
+                            <div
+                                class="w-3 h-3 rounded-full mr-3 ${agent.status === 1 ? 'bg-green-500' : 'bg-red-500'}"
+                                title="${agent.status === 1 ? '在线' : '离线'}"
+                            ></div>
+                            <h3 class="text-lg font-semibold text-gray-900">${agent.name} <span class="text-sm text-gray-500 font-normal">(${agent.ip_address})</span></h3>
+                        </div>
+                        <div class="text-sm text-gray-600 sm:text-right">
+                            <p>ID: <span class="font-mono text-gray-800 break-all">${agent.id}</span></p>
+                            <p>版本: ${agent.version}</p>
+                            <p>主机名: ${agent.hostname}</p>
+                            <p>操作系统/架构: ${agent.capabilities.os}/${agent.capabilities.arch}</p>
+                            <p>上次在线: ${new Date(agent.last_seen).toLocaleString()}</p>
+                            ${agent.metrics ? `<p>指标: CPU: ${agent.metrics.cpu_usage || 'N/A'}, 内存: ${agent.metrics.memory || 'N/A'}</p>` : ''}
+                        </div>
+                    `;
+                    agentsListElement.appendChild(agentDiv);
+                });
+            }
+        }
+
+        // --- Modal functions ---
+        function showAddServerModal() {
+            addServerModal.classList.remove('hidden');
+            addServerMessageElement.classList.add('hidden'); // Hide previous messages
+        }
+
+        function hideAddServerModal() {
+            addServerModal.classList.add('hidden');
+            addServerForm.reset(); // Reset form fields when hiding
+            addServerMessageElement.classList.add('hidden'); // Ensure message is hidden on close
+        }
+
+        function updateAddServerMessage(msg, isError = false) {
+            addServerMessageElement.textContent = msg;
+            addServerMessageElement.className = `message-box ${isError ? 'error' : 'success'}`;
+            addServerMessageElement.classList.remove('hidden');
+        }
+
+        // --- Event Handlers ---
+
+        async function handleSubmit(event) {
+            event.preventDefault();
+            setIPTablesLoading(true);
+            updateIPTablesMessage('');
+
+            currentDport = dportInput.value;
+            currentToDestinationIp = toDestinationIpInput.value;
+            currentToDestinationPort = toDestinationPortInput.value;
+
+            if (!currentDport || !currentToDestinationIp || !currentToDestinationPort) {
+                updateIPTablesMessage('所有 IPTables 字段都是必填项！', true);
+                setIPTablesLoading(false);
+                return;
+            }
+
+            const requestBody = {
+                Type: 'bash',
+                Command: 'iptables',
+                Parameters: {
+                    'dport': currentDport,
+                    'to-destination-ip': currentToDestinationIp,
+                    'to-destination-port': currentToDestinationPort,
+                },
+                TimeoutSeconds: 60,
+            };
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/tasks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody),
+                });
+
+                if (response.ok) {
+                    updateIPTablesMessage('IPTables 请求已成功发送！');
+                    // Clear form
+                    dportInput.value = '';
+                    toDestinationIpInput.value = '';
+                    toDestinationPortInput.value = '';
+                } else {
+                    const errorData = await response.json();
+                    updateIPTablesMessage(`发送 IPTables 请求失败: ${errorData.message || response.statusText}`, true);
+                }
+            } catch (error) {
+                updateIPTablesMessage(`发生网络错误: ${error.message}`, true);
+            } finally {
+                setIPTablesLoading(false);
+            }
+        }
+
+        async function fetchAgentStatus() {
+            setAgentLoadingStatus(true);
+            updateAgentStatusMessage('');
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/agents`);
+                if (response.ok) {
+                    const data = await response.json();
+                    currentAgents = data.data || []; 
+                    updateAgentStatusMessage('Agent 信息已更新。');
+                    renderAgents();
+                } else {
+                    const errorData = await response.json();
+                    updateAgentStatusMessage(`获取 Agent 信息失败: ${errorData.message || response.statusText}`, true);
+                    currentAgents = []; // Clear old data
+                    renderAgents();
+                }
+            } catch (error) {
+                updateAgentStatusMessage(`获取 Agent 信息时发生网络错误: ${error.message}`, true);
+                currentAgents = []; // Clear old data
+                renderAgents();
+            } finally {
+                setAgentLoadingStatus(false);
+            }
+        }
+
+        async function handleAddServerSubmit(event) {
+            event.preventDefault();
+            updateAddServerMessage('', false); // Clear previous messages
+            confirmAddServerButton.disabled = true; // Disable button during submission
+            confirmAddServerButton.textContent = '添加中...';
+
+            const hostIp = hostIpInput.value;
+            const hostPort = parseInt(hostPortInput.value, 10); // Ensure port is an integer
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+
+            // Basic validation
+            if (!hostIp || !hostPort || !username || !password) {
+                updateAddServerMessage('所有字段都是必填项！', true);
+                confirmAddServerButton.disabled = false;
+                confirmAddServerButton.textContent = '确定';
+                return;
+            }
+
+            const requestBody = {
+                host: hostIp,
+                port: hostPort,
+                username: username,
+                password: password
+            };
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/agents`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody),
+                });
+
+                if (response.ok) {
+                    updateAddServerMessage('服务器添加成功！', false);
+                    // Optionally, refresh agent list after successful addition
+                    fetchAgentStatus(); 
+                    // Hide modal after a short delay for user to see success message
+                    setTimeout(hideAddServerModal, 1500); 
+                } else {
+                    const errorData = await response.json();
+                    updateAddServerMessage(`添加服务器失败: ${errorData.message || response.statusText}`, true);
+                }
+            } catch (error) {
+                updateAddServerMessage(`发生网络错误: ${error.message}`, true);
+            } finally {
+                confirmAddServerButton.disabled = false;
+                confirmAddServerButton.textContent = '确定';
+            }
+        }
+
+        // --- Initialize on window load ---
+        window.onload = function() {
+            // Attach form submission listener for IPTables
+            document.getElementById('iptables-form').addEventListener('submit', handleSubmit);
+
+            // Attach click listener for "添加服务器" button
+            addServerButton.addEventListener('click', showAddServerModal);
+
+            // Attach event listeners for Add Server Modal buttons
+            cancelAddServerButton.addEventListener('click', hideAddServerModal);
+            addServerForm.addEventListener('submit', handleAddServerSubmit);
+
+            // Allow clicking outside the modal content to close it
+            addServerModal.addEventListener('click', (event) => {
+                if (event.target === addServerModal) {
+                    hideAddServerModal();
+                }
+            });
+
+            // Initial fetch for agent status
+            fetchAgentStatus();
+            // Set up interval for agent status updates
+            setInterval(fetchAgentStatus, 5000);
+        };
+    </script>
+</body>
+</html>

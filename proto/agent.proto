@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package agent;
+
+option go_package = "github.com/Axpz/xHub/proto";
+
+// Agent服务定义
+service AgentService {
+  // 注册Agent
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  
+  // 心跳检测
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  
+  // 获取任务
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  
+  // 提交任务结果
+  rpc SubmitTaskResult(SubmitTaskResultRequest) returns (SubmitTaskResultResponse);
+  
+  // 流式任务处理
+  rpc StreamTask(stream TaskStream) returns (stream TaskStream);
+}
+
+// 注册请求
+message RegisterRequest {
+  string agent_id = 1;
+  string agent_name = 2;
+  string version = 3;
+  map<string, string> capabilities = 4;
+  string hostname = 5;
+  string ip_address = 6;
+}
+
+// 注册响应
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+  string session_token = 3;
+}
+
+// 心跳请求
+message HeartbeatRequest {
+  string agent_id = 1;
+  string session_token = 2;
+  AgentStatus status = 3;
+  map<string, string> metrics = 4;
+}
+
+// 心跳响应
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
+  bool has_task = 3;
+}
+
+// Agent状态
+enum AgentStatus {
+  UNKNOWN = 0;
+  IDLE = 1;
+  BUSY = 2;
+  OFFLINE = 3;
+}
+
+// 获取任务请求
+message GetTaskRequest {
+  string agent_id = 1;
+  string session_token = 2;
+}
+
+// 获取任务响应
+message GetTaskResponse {
+  bool success = 1;
+  string message = 2;
+  Task task = 3;
+}
+
+// 任务定义
+message Task {
+  string task_id = 1;
+  string task_type = 2;
+  string command = 3;
+  map<string, string> parameters = 4;
+  int64 timeout_seconds = 5;
+  int64 created_at = 6;
+}
+
+// 提交任务结果请求
+message SubmitTaskResultRequest {
+  string agent_id = 1;
+  string task_id = 2;
+  TaskResult result = 3;
+}
+
+// 提交任务结果响应
+message SubmitTaskResultResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 任务结果
+message TaskResult {
+  bool success = 1;
+  string output = 2;
+  string error = 3;
+  int64 execution_time_ms = 4;
+  map<string, string> metadata = 5;
+}
+
+// 流式任务消息
+message TaskStream {
+  oneof message {
+    TaskRequest task_request = 1;
+    TaskResponse task_response = 2;
+  }
+}
+
+// 流式任务请求
+message TaskRequest {
+  string task_id = 1;
+  string command = 2;
+  map<string, string> parameters = 3;
+}
+
+// 流式任务响应
+message TaskResponse {
+  string task_id = 1;
+  bool success = 2;
+  string output = 3;
+  string error = 4;
+} 
